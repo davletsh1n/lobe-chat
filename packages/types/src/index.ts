@@ -1,5 +1,4 @@
 export * from './agent';
-export * from './agentCronJob';
 export * from './agentExecution';
 export * from './agentGroup';
 export * from './aiChat';
@@ -12,12 +11,14 @@ export * from './chunk';
 export * from './clientDB';
 export * from './conversation';
 export * from './creds';
+export * from './device';
 export * from './discover';
 export * from './document';
 export * from './eval';
 export * from './export';
 export * from './fetch';
 export * from './files';
+export * from './followUpAction';
 export * from './generation';
 export * from './home';
 export * from './hotkey';
@@ -28,6 +29,7 @@ export * from './message';
 export * from './meta';
 export * from './plugins';
 export * from './rag';
+export * from './redis';
 export * from './search';
 export * from './serverConfig';
 export * from './service';
@@ -39,6 +41,7 @@ export * from './tool';
 export * from './topic';
 export * from './user';
 export * from './userMemory';
+export * from './verify';
 // FIXME: I think we need a refactor for the "openai" types
 // it more likes the UI message payload
 export * from './agentRuntime';

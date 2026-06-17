@@ -1,12 +1,10 @@
 import { mutate, useClientDataSWR } from '@/libs/swr';
+import { taskKeys } from '@/libs/swr/keys';
 import { taskService } from '@/services/task';
 import type { StoreSetter } from '@/store/types';
 
 import type { TaskStore } from '../../store';
 import type { TaskGroupItem, TaskListItem, TaskViewMode } from './initialState';
-
-const FETCH_TASK_LIST_KEY = 'fetchTaskList';
-const FETCH_TASK_GROUP_LIST_KEY = 'fetchTaskGroupList';
 
 /**
  * Sentinel used as `listAgentId` when the task list is showing tasks across all agents
@@ -16,10 +14,15 @@ const FETCH_TASK_GROUP_LIST_KEY = 'fetchTaskGroupList';
 export const ALL_AGENTS_LIST_KEY = '__all__';
 
 // Default kanban groups: 5 columns
+// 'scheduled' shares the 'running' column — both represent "automation in
+// progress" from the user's perspective (one is mid-tick, the other is
+// waiting for the next tick).
+// `needsInput` is intentionally first: in the list view it surfaces the
+// actionable items at the top of the page.
 const DEFAULT_KANBAN_GROUPS = [
-  { key: 'backlog', statuses: ['backlog'] },
-  { key: 'running', statuses: ['running'] },
   { key: 'needsInput', statuses: ['paused', 'failed'] },
+  { key: 'backlog', statuses: ['backlog'] },
+  { key: 'running', statuses: ['running', 'scheduled'] },
   { key: 'done', statuses: ['completed'] },
   { key: 'canceled', statuses: ['canceled'] },
 ];
@@ -41,7 +44,7 @@ export class TaskListSliceActionImpl {
 
   refreshTaskGroupList = async (): Promise<void> => {
     const { listAgentId } = this.#get();
-    await mutate([FETCH_TASK_GROUP_LIST_KEY, listAgentId]);
+    await mutate(taskKeys.groupList(listAgentId));
   };
 
   fetchTaskList = async (params: Parameters<typeof taskService.list>[0]) =>
@@ -50,8 +53,8 @@ export class TaskListSliceActionImpl {
   refreshTaskList = async (): Promise<void> => {
     const { listAgentId } = this.#get();
     await Promise.all([
-      mutate([FETCH_TASK_LIST_KEY, listAgentId]),
-      mutate([FETCH_TASK_GROUP_LIST_KEY, listAgentId]),
+      mutate(taskKeys.list(listAgentId)),
+      mutate(taskKeys.groupList(listAgentId)),
     ]);
   };
 
@@ -77,7 +80,7 @@ export class TaskListSliceActionImpl {
     }
 
     return useClientDataSWR(
-      enabled && effectiveKey ? [FETCH_TASK_GROUP_LIST_KEY, effectiveKey] : null,
+      enabled && effectiveKey ? taskKeys.groupList(effectiveKey) : null,
       async () => {
         return taskService.groupList({
           assigneeAgentId: allAgents ? undefined : agentId,
@@ -112,7 +115,7 @@ export class TaskListSliceActionImpl {
     }
 
     return useClientDataSWR(
-      enabled && effectiveKey ? [FETCH_TASK_LIST_KEY, effectiveKey] : null,
+      enabled && effectiveKey ? taskKeys.list(effectiveKey) : null,
       async ([, id]: [string, string]) => {
         return this.fetchTaskList(allAgents ? {} : { assigneeAgentId: id });
       },

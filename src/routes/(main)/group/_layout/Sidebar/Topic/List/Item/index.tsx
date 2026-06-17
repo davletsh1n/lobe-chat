@@ -1,14 +1,20 @@
 import type { ChatTopicStatus } from '@lobechat/types';
-import { Flexbox, Icon, Skeleton, Tag } from '@lobehub/ui';
+import { Flexbox, Icon, Skeleton, Tag, Tooltip } from '@lobehub/ui';
 import { createStaticStyles, cssVar } from 'antd-style';
-import { CheckCircle2, HashIcon, Loader2Icon, MessageSquareDashed } from 'lucide-react';
+import {
+  CheckCircle2,
+  Hand,
+  HashIcon,
+  Loader2Icon,
+  MessageSquareDashed,
+  TriangleAlert,
+} from 'lucide-react';
 import { AnimatePresence, m } from 'motion/react';
-import { memo, Suspense, useCallback, useMemo, useRef } from 'react';
+import { memo, Suspense, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import DotsLoading from '@/components/DotsLoading';
 import { isDesktop } from '@/const/version';
-import { pluginRegistry } from '@/features/Electron/titlebar/RecentlyViewed/plugins';
 import NavItem from '@/features/NavPanel/components/NavItem';
 import { useFocusTopicPopup } from '@/features/TopicPopupGuard/useTopicPopupsRegistry';
 import { useAgentGroupStore } from '@/store/agentGroup';
@@ -58,6 +64,18 @@ const styles = createStaticStyles(({ css }) => ({
   `,
 }));
 
+// Module-scoped so a click on any topic cancels a pending click on another.
+// Per-item refs can't do that, which lets rapid clicks across items all
+// fire — each racing to write activeTopicId (see ).
+let pendingSingleClickTimer: ReturnType<typeof setTimeout> | null = null;
+
+const cancelPendingSingleClick = () => {
+  if (pendingSingleClickTimer) {
+    clearTimeout(pendingSingleClickTimer);
+    pendingSingleClickTimer = null;
+  }
+};
+
 interface TopicItemProps {
   active?: boolean;
   fav?: boolean;
@@ -96,13 +114,12 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
     [id],
   );
 
-  const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
   const handleClick = useCallback(() => {
     if (editing) return;
     if (isDesktop) {
-      clickTimerRef.current = setTimeout(() => {
-        clickTimerRef.current = null;
+      cancelPendingSingleClick();
+      pendingSingleClickTimer = setTimeout(() => {
+        pendingSingleClickTimer = null;
         void (async () => {
           await focusTopicPopup(id);
           switchTopic(id);
@@ -120,21 +137,15 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
 
   const handleDoubleClick = useCallback(async () => {
     if (!id || !activeGroupId || !isDesktop) return;
-    if (clickTimerRef.current) {
-      clearTimeout(clickTimerRef.current);
-      clickTimerRef.current = null;
-    }
+    cancelPendingSingleClick();
     if (await focusTopicPopup(id)) {
       switchTopic(id);
       toggleMobileTopic(false);
       return;
     }
-    const reference = pluginRegistry.parseUrl(`/group/${activeGroupId}`, `topic=${id}`);
-    if (reference) {
-      addTab(reference);
-      switchTopic(id);
-      toggleMobileTopic(false);
-    }
+    addTab(`/group/${activeGroupId}?topic=${id}`);
+    switchTopic(id);
+    toggleMobileTopic(false);
   }, [id, activeGroupId, addTab, focusTopicPopup, switchTopic, toggleMobileTopic]);
 
   const dropdownMenu = useTopicItemDropdownMenu({
@@ -144,6 +155,9 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
   });
 
   const isCompleted = status === 'completed';
+  const isFailed = status === 'failed';
+  const isRunning = status === 'running';
+  const isWaitingForHuman = status === 'waitingForHuman';
 
   const hasUnread = id && isUnreadCompleted;
   const infoColor = cssVar.colorInfo;
@@ -192,6 +206,7 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
     return (
       <NavItem
         active={active}
+        titleColor={cssVar.colorText}
         icon={
           isLoading ? (
             <Icon spin color={cssVar.colorWarning} icon={Loader2Icon} size={'small'} />
@@ -227,10 +242,21 @@ const TopicItem = memo<TopicItemProps>(({ id, title, fav, active, threadId, stat
         disabled={editing}
         href={!editing ? href : undefined}
         title={title === '...' ? <DotsLoading gap={3} size={4} /> : title}
+        titleColor={cssVar.colorText}
         icon={(() => {
-          if (isLoading) {
+          if (isWaitingForHuman) {
+            return <Icon icon={Hand} size={'small'} style={{ color: cssVar.colorInfo }} />;
+          }
+          if (isLoading || isRunning) {
             return (
               <Icon spin icon={Loader2Icon} size={'small'} style={{ color: cssVar.colorWarning }} />
+            );
+          }
+          if (isFailed) {
+            return (
+              <Tooltip title={t('failedStatusTip')}>
+                <Icon icon={TriangleAlert} size={'small'} style={{ color: cssVar.colorError }} />
+              </Tooltip>
             );
           }
           if (isCompleted) {

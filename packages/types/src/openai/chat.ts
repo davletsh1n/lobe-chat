@@ -33,8 +33,15 @@ interface UserMessageContentPartImage {
   };
   type: 'image_url';
 }
+interface UserMessageContentPartVideo {
+  type: 'video_url';
+  video_url: { url: string };
+}
 
-export type UserMessageContentPart = UserMessageContentPartText | UserMessageContentPartImage;
+export type UserMessageContentPart =
+  | UserMessageContentPartText
+  | UserMessageContentPartImage
+  | UserMessageContentPartVideo;
 
 export interface OpenAIChatMessage {
   /**
@@ -48,6 +55,11 @@ export interface OpenAIChatMessage {
    */
   function_call?: OpenAIFunctionCall;
   name?: string;
+  reasoning?: {
+    content?: string;
+    duration?: number;
+  };
+  reasoning_content?: string;
   /**
    * Role
    * @description Role of the message sender
@@ -95,6 +107,7 @@ export interface ChatStreamPayload {
    * @default 0
    */
   presence_penalty?: number;
+  preserveThinking?: boolean;
   /**
    * @default openai
    */

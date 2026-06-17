@@ -221,6 +221,37 @@ const isAgentRuntimeRunningByContext =
   };
 
 /**
+ * Get the earliest start time for a running agent runtime operation in a
+ * specific context. This anchors visible elapsed-time UI to the top-level
+ * runtime op instead of short-lived sub-operations.
+ */
+const getAgentRuntimeStartTimeByContext =
+  (context: MessageMapKeyInput) =>
+  (s: ChatStoreState): number | undefined => {
+    if (!context.agentId) return undefined;
+
+    const operations = getOperationsByContext(context)(s);
+    let startTime: number | undefined;
+
+    for (const op of operations) {
+      if (
+        op.status !== 'running' ||
+        op.metadata.isAborting ||
+        !AI_RUNTIME_OPERATION_TYPES.includes(op.type)
+      ) {
+        continue;
+      }
+
+      startTime =
+        startTime === undefined
+          ? op.metadata.startTime
+          : Math.min(startTime, op.metadata.startTime);
+    }
+
+    return startTime;
+  };
+
+/**
  * Check if input should show loading state in a specific context
  * Includes sendMessage in addition to AI runtime operations,
  * so the input stays in loading state from the moment user sends until AI finishes
@@ -446,6 +477,50 @@ const isMessageInToolCalling =
   };
 
 /**
+ * Find a running tool operation start time by operation type.
+ */
+const getRunningToolOperationStartTime = (
+  type: OperationType,
+  toolCallId: string,
+  s: ChatStoreState,
+) => {
+  const operationIds = s.operationsByType[type] ?? [];
+  let startTime: number | undefined;
+
+  for (const id of operationIds) {
+    const operation = s.operations[id];
+    if (
+      !operation ||
+      operation.status !== 'running' ||
+      operation.metadata.tool_call_id !== toolCallId
+    ) {
+      continue;
+    }
+
+    startTime =
+      startTime === undefined
+        ? operation.metadata.startTime
+        : Math.min(startTime, operation.metadata.startTime);
+  }
+
+  return startTime;
+};
+
+/**
+ * Get the stable start time for a running tool call.
+ * Prefer the actual execution phase; fall back to the parent tool call while
+ * the execution operation has not been created yet.
+ */
+const getRunningToolCallStartTime =
+  (toolCallId: string) =>
+  (s: ChatStoreState): number | undefined => {
+    return (
+      getRunningToolOperationStartTime('executeToolCall', toolCallId, s) ??
+      getRunningToolOperationStartTime('toolCalling', toolCallId, s)
+    );
+  };
+
+/**
  * Check if currently aborting (cleaning up after user cancellation)
  * Used to show "Cleaning up tool calls..." message
  */
@@ -513,6 +588,21 @@ const isTopicUnreadCompleted =
     return false;
   };
 
+/**
+ * Number of topics with unread completed generation among the given topic ids.
+ * Used to surface an aggregated unread indicator on a collapsed topic group.
+ */
+const unreadCompletedCountForTopics =
+  (topicIds: string[]) =>
+  (s: ChatStoreState): number => {
+    const sets = Object.values(s.unreadCompletedTopicsByAgent);
+    let count = 0;
+    for (const topicId of topicIds) {
+      if (sets.some((set) => set.has(topicId))) count += 1;
+    }
+    return count;
+  };
+
 // ━━━ Message Queue Selectors ━━━
 
 /**
@@ -559,10 +649,12 @@ export const operationSelectors = {
   getDeepestRunningOperationByMessage,
   getOperationById,
   getOperationContextFromMessage,
+  getAgentRuntimeStartTimeByContext,
   getOperationsByContext,
   getOperationsByMessage,
   getOperationsByType,
   getRunningOperations,
+  getRunningToolCallStartTime,
   hasAnyRunningOperation,
   hasRunningOperationByContext,
   hasRunningOperationType,
@@ -593,6 +685,7 @@ export const operationSelectors = {
   isRegenerating,
   isSendingMessage,
   isTopicUnreadCompleted,
+  unreadCompletedCountForTopics,
 
   // Message Queue
   getQueuedMessages,

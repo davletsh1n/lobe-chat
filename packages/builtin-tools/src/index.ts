@@ -2,25 +2,34 @@ import { LobeActivatorManifest } from '@lobechat/builtin-tool-activator';
 import { AgentBuilderManifest } from '@lobechat/builtin-tool-agent-builder';
 import { AgentDocumentsManifest } from '@lobechat/builtin-tool-agent-documents';
 import { AgentManagementManifest } from '@lobechat/builtin-tool-agent-management';
+import {
+  agentSignalFeedbackIntentManifest,
+  agentSignalReflectionManifest,
+  agentSignalReviewManifest,
+  agentSignalSkillManagementManifest,
+} from '@lobechat/builtin-tool-agent-signal';
 import { BriefManifest } from '@lobechat/builtin-tool-brief';
 import { CalculatorManifest } from '@lobechat/builtin-tool-calculator';
 import { CloudSandboxManifest } from '@lobechat/builtin-tool-cloud-sandbox';
 import { CredsManifest } from '@lobechat/builtin-tool-creds';
-import { CronManifest } from '@lobechat/builtin-tool-cron';
 import { GroupAgentBuilderManifest } from '@lobechat/builtin-tool-group-agent-builder';
 import { GroupManagementManifest } from '@lobechat/builtin-tool-group-management';
-import { GTDManifest } from '@lobechat/builtin-tool-gtd';
 import { KnowledgeBaseManifest } from '@lobechat/builtin-tool-knowledge-base';
+import { LobeAgentManifest } from '@lobechat/builtin-tool-lobe-agent';
+import { LobeDeliveryCheckerManifest } from '@lobechat/builtin-tool-lobe-delivery-checker';
 import { LocalSystemManifest } from '@lobechat/builtin-tool-local-system';
 import { MemoryManifest } from '@lobechat/builtin-tool-memory';
 import { MessageManifest } from '@lobechat/builtin-tool-message';
 import { PageAgentManifest } from '@lobechat/builtin-tool-page-agent';
 import { RemoteDeviceManifest } from '@lobechat/builtin-tool-remote-device';
+import { selfFeedbackIntentManifest } from '@lobechat/builtin-tool-self-iteration';
+import { SkillMaintainerManifest } from '@lobechat/builtin-tool-skill-maintainer';
 import { SkillStoreManifest } from '@lobechat/builtin-tool-skill-store';
 import { SkillsManifest } from '@lobechat/builtin-tool-skills';
 import { TaskManifest } from '@lobechat/builtin-tool-task';
 import { TopicReferenceManifest } from '@lobechat/builtin-tool-topic-reference';
 import { UserInteractionManifest } from '@lobechat/builtin-tool-user-interaction';
+import { VerifyToolManifest } from '@lobechat/builtin-tool-verify';
 import { WebBrowsingManifest } from '@lobechat/builtin-tool-web-browsing';
 import { WebOnboardingManifest } from '@lobechat/builtin-tool-web-onboarding';
 import { isDesktop, RECOMMENDED_SKILLS, RecommendedSkillType } from '@lobechat/const';
@@ -41,15 +50,27 @@ export const defaultToolIds = [
   CloudSandboxManifest.identifier,
   TopicReferenceManifest.identifier,
   AgentDocumentsManifest.identifier,
-  GTDManifest.identifier,
   TaskManifest.identifier,
+  LobeAgentManifest.identifier,
 ];
 
 /**
  * Tool IDs that are always enabled regardless of user selection.
  * These are core system tools that the agent needs to function properly.
+ *
+ * `lobe-agent` is listed first: its built-in capabilities (plan + todo management,
+ * sub-agent dispatch, visual-media fallback) should be available on every agent-mode turn,
+ * not gated behind explicit injection. NOTE: these rules only apply in agent mode — chat
+ * mode (`enableAgentMode === false`) drops `alwaysOnToolIds` entirely. In manual
+ * skill-activate mode the discovery tools in `manualModeExcludeToolIds` are still removed
+ * from the defaults before the enable checker runs, so they end up disabled there.
+ *
+ * This list is also the source for the chat-input Tools popover's read-only "Pinned"
+ * section (`builtinToolSelectors.fixedDisplayMetaList`), so users can see what the app
+ * keeps active — that selector applies the same manual-mode exclusion to stay truthful.
  */
 export const alwaysOnToolIds = [
+  LobeAgentManifest.identifier,
   LobeActivatorManifest.identifier,
   SkillsManifest.identifier,
   SkillStoreManifest.identifier,
@@ -63,6 +84,24 @@ export const alwaysOnToolIds = [
 export const manualModeExcludeToolIds = [
   LobeActivatorManifest.identifier,
   SkillStoreManifest.identifier,
+];
+
+/**
+ * Tool IDs allowed when the agent runs in chat mode
+ * (`chatConfig.enableAgentMode === false`). Each one still passes through
+ * its own runtime gate (e.g. knowledge base requires `hasEnabledKnowledgeBases`,
+ * memory requires the global memory setting, web-browsing requires search
+ * enabled) — this list is the strict outer whitelist.
+ *
+ * In chat mode, both the server `createServerAgentToolsEngine` and the
+ * frontend `createAgentToolsEngine` build their rules from ONLY these
+ * identifiers, drop user plugins / `alwaysOnToolIds` entirely, and disable
+ * `allowExplicitActivation` so the activator can't smuggle other tools in.
+ */
+export const chatModeAllowedToolIds = [
+  KnowledgeBaseManifest.identifier,
+  MemoryManifest.identifier,
+  WebBrowsingManifest.identifier,
 ];
 
 /**
@@ -85,10 +124,18 @@ export const runtimeManagedToolIds = [
   LocalSystemManifest.identifier,
   MemoryManifest.identifier,
   RemoteDeviceManifest.identifier,
+  LobeAgentManifest.identifier,
   WebBrowsingManifest.identifier,
 ];
 
 export const builtinTools: LobeBuiltinTool[] = [
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: VerifyToolManifest.identifier,
+    manifest: VerifyToolManifest,
+    type: 'builtin',
+  },
   {
     discoverable: false,
     hidden: true,
@@ -107,6 +154,48 @@ export const builtinTools: LobeBuiltinTool[] = [
     hidden: true,
     identifier: SkillStoreManifest.identifier,
     manifest: SkillStoreManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: SkillMaintainerManifest.identifier,
+    manifest: SkillMaintainerManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: selfFeedbackIntentManifest.identifier,
+    manifest: selfFeedbackIntentManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: agentSignalReviewManifest.identifier,
+    manifest: agentSignalReviewManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: agentSignalReflectionManifest.identifier,
+    manifest: agentSignalReflectionManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: agentSignalFeedbackIntentManifest.identifier,
+    manifest: agentSignalFeedbackIntentManifest,
+    type: 'builtin',
+  },
+  {
+    discoverable: false,
+    hidden: true,
+    identifier: agentSignalSkillManagementManifest.identifier,
+    manifest: agentSignalSkillManagementManifest,
     type: 'builtin',
   },
   {
@@ -142,11 +231,6 @@ export const builtinTools: LobeBuiltinTool[] = [
   {
     identifier: CredsManifest.identifier,
     manifest: CredsManifest,
-    type: 'builtin',
-  },
-  {
-    identifier: CronManifest.identifier,
-    manifest: CronManifest,
     type: 'builtin',
   },
   {
@@ -190,11 +274,6 @@ export const builtinTools: LobeBuiltinTool[] = [
     type: 'builtin',
   },
   {
-    identifier: GTDManifest.identifier,
-    manifest: GTDManifest,
-    type: 'builtin',
-  },
-  {
     identifier: CalculatorManifest.identifier,
     manifest: CalculatorManifest,
     type: 'builtin',
@@ -232,8 +311,6 @@ export const builtinTools: LobeBuiltinTool[] = [
     type: 'builtin',
   },
   {
-    discoverable: false,
-    hidden: true,
     identifier: TaskManifest.identifier,
     manifest: TaskManifest,
     type: 'builtin',
@@ -243,6 +320,17 @@ export const builtinTools: LobeBuiltinTool[] = [
     hidden: true,
     identifier: BriefManifest.identifier,
     manifest: BriefManifest,
+    type: 'builtin',
+  },
+  {
+    hidden: true,
+    identifier: LobeAgentManifest.identifier,
+    manifest: LobeAgentManifest,
+    type: 'builtin',
+  },
+  {
+    identifier: LobeDeliveryCheckerManifest.identifier,
+    manifest: LobeDeliveryCheckerManifest,
     type: 'builtin',
   },
 ];
